@@ -18,67 +18,92 @@ exports.handler = async (event, context) => {
   }
 
   try {
-    // Start with a simple single-page scrape to test
-    const testUrl = "https://manitouspringsco.gov";
+    const baseUrl = "https://manitouspringsco.gov";
     const debugInfo = [];
-
-    debugInfo.push(`Starting scrape of: ${testUrl}`);
-
-    const pageData = await scrapePage(testUrl);
-    debugInfo.push(
-      `Successfully scraped page. Title: "${pageData.title}", Content length: ${pageData.content.length}`
-    );
-
     const scrapedPages = [];
+    const visitedUrls = new Set();
 
-    // Only add if we got meaningful content
-    if (pageData.content && pageData.content.length > 20) {
-      scrapedPages.push({
-        url: pageData.finalUrl || testUrl,
-        title: pageData.title,
-        content: pageData.content,
-        wordCount: pageData.wordCount,
-        lastScraped: new Date().toISOString(),
-      });
-      debugInfo.push(`✓ Added page with ${pageData.wordCount} words`);
-    } else {
-      debugInfo.push(
-        `✗ Page content too short: ${pageData.content.length} characters`
-      );
-    }
+    // Start with the main page AND important section pages
+    const urlsToVisit = [
+      baseUrl,
+      baseUrl + "/I-Want-To",
+      baseUrl + "/Community",
+      baseUrl + "/City-Directory",
+      baseUrl + "/News",
+      baseUrl + "/Government",
+      baseUrl + "/Business",
+      baseUrl + "/Visitors",
+      baseUrl + "/Calendar",
+      baseUrl + "/Agendas-Minutes",
+      baseUrl + "/Forms-Permits",
+      baseUrl + "/Employment-Opportunities",
+    ];
 
-    // Try to get a few more pages from the links we found
-    if (pageData.links && pageData.links.length > 0) {
-      debugInfo.push(`Found ${pageData.links.length} links to explore`);
+    debugInfo.push(`Starting comprehensive scrape of: ${baseUrl}`);
 
-      // Try up to 3 additional pages
-      const additionalUrls = pageData.links.slice(0, 3);
+    // Crawl up to 50 pages (increased from 4)
+    const maxPages = 50;
+    let pageCount = 0;
 
-      for (const url of additionalUrls) {
-        try {
-          debugInfo.push(`Attempting to scrape: ${url}`);
-          const additionalPage = await scrapePage(url);
+    while (urlsToVisit.length > 0 && pageCount < maxPages) {
+      const currentUrl = urlsToVisit.shift();
 
-          if (additionalPage.content && additionalPage.content.length > 100) {
-            scrapedPages.push({
-              url: additionalPage.finalUrl || url,
-              title: additionalPage.title,
-              content: additionalPage.content,
-              wordCount: additionalPage.wordCount,
-              lastScraped: new Date().toISOString(),
-            });
-            debugInfo.push(`✓ Added additional page: ${additionalPage.title}`);
-          } else {
-            debugInfo.push(`✗ Skipped page (too short): ${url}`);
-          }
-        } catch (error) {
-          debugInfo.push(`✗ Error scraping ${url}: ${error.message}`);
+      if (visitedUrls.has(currentUrl)) continue;
+      visitedUrls.add(currentUrl);
+
+      try {
+        debugInfo.push(`Scraping page ${pageCount + 1}: ${currentUrl}`);
+
+        const pageData = await scrapePage(currentUrl);
+        debugInfo.push(
+          `Page data: title="${pageData.title}", content=${pageData.content.length} chars, links=${pageData.links.length}`
+        );
+
+        // Add page if it has meaningful content
+        if (pageData.content && pageData.content.length > 50) {
+          scrapedPages.push({
+            url: pageData.finalUrl || currentUrl,
+            title: pageData.title,
+            content: pageData.content,
+            wordCount: pageData.wordCount,
+            lastScraped: new Date().toISOString(),
+          });
+          debugInfo.push(
+            `✓ Added page: ${pageData.title} (${pageData.wordCount} words)`
+          );
+        } else {
+          debugInfo.push(
+            `✗ Skipped page (too short): ${pageData.content.length} chars`
+          );
         }
 
-        // Small delay between requests
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // Add new URLs to visit
+        const newUrls = pageData.links
+          .filter((link) => !visitedUrls.has(link))
+          .slice(0, 10); // Get more links per page
+
+        urlsToVisit.push(...newUrls);
+
+        if (newUrls.length > 0) {
+          debugInfo.push(
+            `Found ${newUrls.length} new URLs to visit: ${newUrls
+              .slice(0, 3)
+              .join(", ")}${newUrls.length > 3 ? "..." : ""}`
+          );
+        }
+
+        pageCount++;
+
+        // Shorter delay to speed up scraping
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch (error) {
+        debugInfo.push(`✗ Error scraping ${currentUrl}: ${error.message}`);
       }
     }
+
+    debugInfo.push(
+      `\nScraping complete! Visited ${pageCount} pages, found ${scrapedPages.length} with content.`
+    );
 
     return {
       statusCode: 200,
@@ -238,7 +263,7 @@ function parseHTML(html, baseUrl) {
       .trim()
       .substring(0, 5000); // Limit content length
 
-    // Extract links - be more conservative
+    // Extract links - be much more aggressive
     const linkMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
     const links = linkMatches
       .map((link) => {
@@ -247,11 +272,19 @@ function parseHTML(html, baseUrl) {
 
         let href = hrefMatch[1];
 
-        // Skip anchors, javascript, etc.
+        // Skip obvious non-content links
         if (
           href.startsWith("#") ||
           href.startsWith("javascript:") ||
-          href.startsWith("mailto:")
+          href.startsWith("mailto:") ||
+          href.startsWith("tel:") ||
+          href.includes("facebook.com") ||
+          href.includes("twitter.com") ||
+          href.includes("instagram.com") ||
+          href.includes("youtube.com") ||
+          href.includes(".pdf") ||
+          href.includes(".doc") ||
+          href.includes(".xls")
         ) {
           return null;
         }
@@ -270,11 +303,21 @@ function parseHTML(html, baseUrl) {
 
         return href;
       })
-      .filter(
-        (link) => link && (link.includes("manitou") || link.includes("springs"))
-      )
-      .filter((link, index, arr) => arr.indexOf(link) === index)
-      .slice(0, 10); // Limit number of links
+      .filter((link) => {
+        if (!link) return false;
+
+        // Much more inclusive filtering - accept any link from the same domain
+        const linkDomain = new URL(link).hostname.toLowerCase();
+        const baseDomain = new URL(baseUrl).hostname.toLowerCase();
+
+        return (
+          linkDomain === baseDomain ||
+          linkDomain === "www." + baseDomain ||
+          baseDomain === "www." + linkDomain
+        );
+      })
+      .filter((link, index, arr) => arr.indexOf(link) === index) // Remove duplicates
+      .slice(0, 20); // Get more links per page
 
     const wordCount = textContent
       .split(" ")
