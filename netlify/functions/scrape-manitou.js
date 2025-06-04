@@ -18,34 +18,31 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    // Set a maximum runtime of 20 seconds
+    const startTime = Date.now();
+    const maxRuntime = 20000; // 20 seconds
+
     const baseUrl = "https://manitouspringsco.gov";
     const debugInfo = [];
     const scrapedPages = [];
     const visitedUrls = new Set();
 
-    // Start with the main page AND important section pages
-    const urlsToVisit = [
-      baseUrl,
-      baseUrl + "/I-Want-To",
-      baseUrl + "/Community",
-      baseUrl + "/City-Directory",
-      baseUrl + "/News",
-      baseUrl + "/Government",
-      baseUrl + "/Business",
-      baseUrl + "/Visitors",
-      baseUrl + "/Calendar",
-      baseUrl + "/Agendas-Minutes",
-      baseUrl + "/Forms-Permits",
-      baseUrl + "/Employment-Opportunities",
-    ];
+    // Start with the sitemap page - it has links to everything!
+    const urlsToVisit = [baseUrl + "/sitemap"];
 
-    debugInfo.push(`Starting comprehensive scrape of: ${baseUrl}`);
+    debugInfo.push(`Starting scrape with sitemap page to discover all URLs`);
 
-    // Crawl up to 50 pages (increased from 4)
-    const maxPages = 50;
+    // Crawl up to 25 pages (increased since sitemap will give us better targets)
+    const maxPages = 25;
     let pageCount = 0;
 
     while (urlsToVisit.length > 0 && pageCount < maxPages) {
+      // Check if we're running out of time
+      if (Date.now() - startTime > maxRuntime) {
+        debugInfo.push(`⏰ Stopping due to time limit (${maxRuntime / 1000}s)`);
+        break;
+      }
+
       const currentUrl = urlsToVisit.shift();
 
       if (visitedUrls.has(currentUrl)) continue;
@@ -77,25 +74,33 @@ exports.handler = async (event, context) => {
           );
         }
 
-        // Add new URLs to visit
+        // Add new URLs to visit (sitemap will give us LOTS of links)
         const newUrls = pageData.links
           .filter((link) => !visitedUrls.has(link))
-          .slice(0, 10); // Get more links per page
+          .filter((link) => {
+            // Be more selective since sitemap will have tons of links
+            const path = new URL(link).pathname.toLowerCase();
+            return (
+              !path.includes("/calendar") &&
+              !path.includes("/login") &&
+              !path.includes("/register") &&
+              !path.includes("/search") &&
+              !path.includes("/sitemap") && // Don't re-scrape sitemap
+              path.length > 1
+            );
+          })
+          .slice(0, pageCount < 5 ? 15 : 3); // Get more links from early pages (especially sitemap)
 
         urlsToVisit.push(...newUrls);
 
         if (newUrls.length > 0) {
-          debugInfo.push(
-            `Found ${newUrls.length} new URLs to visit: ${newUrls
-              .slice(0, 3)
-              .join(", ")}${newUrls.length > 3 ? "..." : ""}`
-          );
+          debugInfo.push(`Found ${newUrls.length} new URLs from ${currentUrl}`);
         }
 
         pageCount++;
 
-        // Shorter delay to speed up scraping
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        // Longer delay to be more respectful
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (error) {
         debugInfo.push(`✗ Error scraping ${currentUrl}: ${error.message}`);
       }
