@@ -172,22 +172,40 @@
             progress.textContent = `✅ Successfully scraped ${data.totalPages} pages!`;
 
             results.style.display = "block";
-            results.textContent =
-              `Found ${data.totalPages} pages with content:\n\n` +
-              data.pages
-                .slice(0, 3)
+
+            // Show debug info
+            let resultsText = `Debug Information:\n`;
+            if (data.debugInfo) {
+              resultsText += data.debugInfo.slice(0, 10).join("\n") + "\n\n";
+            }
+
+            resultsText += `Found ${data.totalPages} pages with content:\n\n`;
+
+            if (data.totalPages > 0) {
+              resultsText += data.pages
+                .slice(0, 2)
                 .map(
                   (page) =>
                     `📄 ${page.title}\n🔗 ${
                       page.url
-                    }\n📝 ${page.content.substring(0, 100)}...\n`
+                    }\n📝 ${page.content.substring(0, 150)}...\n📊 ${
+                      page.wordCount
+                    } words\n`
                 )
                 .join("\n");
+            } else {
+              resultsText +=
+                "No pages found. Check debug info above for details.";
+            }
 
-            // Enable download buttons
-            document.getElementById("downloadJson").disabled = false;
-            document.getElementById("downloadCsv").disabled = false;
-            document.getElementById("downloadTxt").disabled = false;
+            results.textContent = resultsText;
+
+            // Enable download buttons only if we have data
+            if (data.totalPages > 0) {
+              document.getElementById("downloadJson").disabled = false;
+              document.getElementById("downloadCsv").disabled = false;
+              document.getElementById("downloadTxt").disabled = false;
+            }
           } else {
             throw new Error(data.error || "Unknown error occurred");
           }
