@@ -49,36 +49,42 @@ exports.handler = async (event, context) => {
           );
         }
 
-        // If this is the sitemap, grab some of its links for additional scraping
+        // If this is the sitemap, grab MORE of its links for scraping
         if (
           url.includes("/sitemap") &&
           pageData.links &&
           pageData.links.length > 0
         ) {
-          debugInfo.push(`Found ${pageData.links.length} links in sitemap`);
           debugInfo.push(
-            `Sample links: ${pageData.links.slice(0, 5).join(", ")}`
+            `Found ${pageData.links.length} total links in sitemap`
+          );
+          debugInfo.push(
+            `First 10 links: ${pageData.links.slice(0, 10).join(", ")}`
           );
 
-          // Add the first few links from sitemap (whatever they are)
+          // Add more links from sitemap - prioritize main section pages
           const additionalUrls = pageData.links
             .filter((link) => {
-              // Only skip obvious non-content pages
+              // Skip authentication and utility pages
               const path = link.toLowerCase();
               return (
-                !path.includes("/calendar") &&
+                !path.includes("/myaccount") &&
                 !path.includes("/login") &&
                 !path.includes("/register") &&
                 !path.includes("/search") &&
                 !path.includes("/sitemap") &&
                 !path.includes(".pdf") &&
-                !path.includes(".doc")
+                !path.includes(".doc") &&
+                !path.includes("facebook.com") &&
+                !path.includes("youtube.com")
               );
             })
-            .slice(0, 4); // Just 4 more pages to stay under time limit
+            .slice(0, 15); // Get 15 more pages instead of 4
 
           urlsToScrape.push(...additionalUrls);
-          debugInfo.push(`Added ${additionalUrls.length} URLs from sitemap`);
+          debugInfo.push(
+            `Added ${additionalUrls.length} URLs from sitemap for scraping`
+          );
         }
 
         // Wait between requests
@@ -190,34 +196,73 @@ function parseHTML(html) {
     ? titleMatch[1].trim().substring(0, 100)
     : "No Title";
 
-  // Extract links from the sitemap
-  const linkMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
-  const links = linkMatches
-    .map((link) => {
-      const hrefMatch = link.match(/href=['"]([^'"]*)['"]/i);
-      if (!hrefMatch) return null;
+  // For sitemap pages, extract ALL links from the sitemap tree structure
+  let links = [];
+  if (html.includes("Site Map") || html.includes("sitemap")) {
+    // Extract all links from the sitemap's tree structure
+    const sitemapMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
+    links = sitemapMatches
+      .map((link) => {
+        const hrefMatch = link.match(/href=['"]([^'"]*)['"]/i);
+        if (!hrefMatch) return null;
 
-      let href = hrefMatch[1];
+        let href = hrefMatch[1];
 
-      // Skip non-content links
-      if (
-        href.startsWith("#") ||
-        href.startsWith("javascript:") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:")
-      ) {
-        return null;
-      }
+        // Skip non-content links
+        if (
+          href.startsWith("#") ||
+          href.startsWith("javascript:") ||
+          href.startsWith("mailto:") ||
+          href.startsWith("tel:") ||
+          href.includes("facebook.com") ||
+          href.includes("twitter.com") ||
+          href.includes("instagram.com") ||
+          href.includes("youtube.com") ||
+          href.includes("nextdoor.com") ||
+          href.includes(".pdf") ||
+          href.includes(".doc")
+        ) {
+          return null;
+        }
 
-      // Convert relative to absolute
-      if (href.startsWith("/")) {
-        href = "https://www.manitouspringsco.gov" + href;
-      }
+        // Convert relative to absolute
+        if (href.startsWith("/")) {
+          href = "https://www.manitouspringsco.gov" + href;
+        }
 
-      return href;
-    })
-    .filter((link) => link && link.includes("manitouspringsco.gov"))
-    .filter((link, index, arr) => arr.indexOf(link) === index); // Remove duplicates
+        return href;
+      })
+      .filter((link) => link && link.includes("manitouspringsco.gov"))
+      .filter((link, index, arr) => arr.indexOf(link) === index); // Remove duplicates
+
+    console.log(`Found ${links.length} links in sitemap`);
+  } else {
+    // For regular pages, use normal link extraction
+    const linkMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
+    links = linkMatches
+      .map((link) => {
+        const hrefMatch = link.match(/href=['"]([^'"]*)['"]/i);
+        if (!hrefMatch) return null;
+
+        let href = hrefMatch[1];
+
+        if (
+          href.startsWith("#") ||
+          href.startsWith("javascript:") ||
+          href.startsWith("mailto:")
+        ) {
+          return null;
+        }
+
+        if (href.startsWith("/")) {
+          href = "https://www.manitouspringsco.gov" + href;
+        }
+
+        return href;
+      })
+      .filter((link) => link && link.includes("manitouspringsco.gov"))
+      .filter((link, index, arr) => arr.indexOf(link) === index);
+  }
 
   // Simple content extraction
   let content = html
@@ -230,6 +275,7 @@ function parseHTML(html) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim()
     .substring(0, 3000); // Limit content
