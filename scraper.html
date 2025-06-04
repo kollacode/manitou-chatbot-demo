@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manitou Springs Website Scraper</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #8b4b7c;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .scraper-section {
+        margin: 30px 0;
+        padding: 20px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+      }
+      button {
+        background: linear-gradient(135deg, #8b4b7c 0%, #a85e8a 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 10px 5px;
+        transition: transform 0.2s;
+      }
+      button:hover {
+        transform: translateY(-2px);
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .progress {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f0f8ff;
+        border-radius: 6px;
+        border-left: 4px solid #8b4b7c;
+      }
+      .results {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        font-family: monospace;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .download-section {
+        text-align: center;
+        margin: 30px 0;
+      }
+      .file-format {
+        margin: 10px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        display: inline-block;
+        background: #fafafa;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🦫 Manitou Springs Website Scraper</h1>
+      <p>
+        This tool will scrape the Manitou Springs government website and prepare
+        the content for your chatbot's knowledge base.
+      </p>
+
+      <div class="scraper-section">
+        <h3>Step 1: Scrape Website</h3>
+        <p>
+          Click the button below to start scraping manitouspringsco.gov. This
+          may take a few minutes.
+        </p>
+        <button id="scrapeBtn" onclick="startScraping()">
+          🕷️ Start Scraping
+        </button>
+        <div id="progress" class="progress" style="display: none"></div>
+        <div id="results" class="results" style="display: none"></div>
+      </div>
+
+      <div class="scraper-section">
+        <h3>Step 2: Download Results</h3>
+        <p>
+          Once scraping is complete, download the data in your preferred format:
+        </p>
+        <div class="download-section">
+          <div class="file-format">
+            <strong>JSON Format</strong><br />
+            <small>For technical use, easy to import into databases</small
+            ><br />
+            <button id="downloadJson" onclick="downloadJSON()" disabled>
+              📄 Download JSON
+            </button>
+          </div>
+          <div class="file-format">
+            <strong>CSV Format</strong><br />
+            <small>For spreadsheets, easy to review and edit</small><br />
+            <button id="downloadCsv" onclick="downloadCSV()" disabled>
+              📊 Download CSV
+            </button>
+          </div>
+          <div class="file-format">
+            <strong>Text Format</strong><br />
+            <small>Plain text, one file per page</small><br />
+            <button id="downloadTxt" onclick="downloadText()" disabled>
+              📝 Download Text Files
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="scraper-section">
+        <h3>Step 3: Import to Your Chatbot</h3>
+        <p>After downloading:</p>
+        <ol>
+          <li>Review the scraped content for accuracy</li>
+          <li>Upload the files to your chatbot's document collection</li>
+          <li>Update your chatbot's knowledge base</li>
+          <li>Test with questions about Manitou Springs</li>
+        </ol>
+      </div>
+    </div>
+
+    <script>
+      let scrapedData = null;
+
+      async function startScraping() {
+        const scrapeBtn = document.getElementById("scrapeBtn");
+        const progress = document.getElementById("progress");
+        const results = document.getElementById("results");
+
+        scrapeBtn.disabled = true;
+        scrapeBtn.textContent = "🔄 Scraping...";
+        progress.style.display = "block";
+        progress.textContent = "Starting to scrape manitouspringsco.gov...";
+
+        try {
+          // Replace with your actual Netlify function URL
+          const response = await fetch("/.netlify/functions/scrape-manitou");
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            scrapedData = data.pages;
+            progress.textContent = `✅ Successfully scraped ${data.totalPages} pages!`;
+
+            results.style.display = "block";
+            results.textContent =
+              `Found ${data.totalPages} pages with content:\n\n` +
+              data.pages
+                .slice(0, 3)
+                .map(
+                  (page) =>
+                    `📄 ${page.title}\n🔗 ${
+                      page.url
+                    }\n📝 ${page.content.substring(0, 100)}...\n`
+                )
+                .join("\n");
+
+            // Enable download buttons
+            document.getElementById("downloadJson").disabled = false;
+            document.getElementById("downloadCsv").disabled = false;
+            document.getElementById("downloadTxt").disabled = false;
+          } else {
+            throw new Error(data.error || "Unknown error occurred");
+          }
+        } catch (error) {
+          progress.textContent = `❌ Error: ${error.message}`;
+          console.error("Scraping error:", error);
+        } finally {
+          scrapeBtn.disabled = false;
+          scrapeBtn.textContent = "🕷️ Start Scraping";
+        }
+      }
+
+      function downloadJSON() {
+        if (!scrapedData) return;
+
+        const dataStr = JSON.stringify(scrapedData, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        downloadFile(blob, "manitou-springs-content.json");
+      }
+
+      function downloadCSV() {
+        if (!scrapedData) return;
+
+        const headers = [
+          "URL",
+          "Title",
+          "Content",
+          "Word Count",
+          "Scraped Date",
+        ];
+        const csvContent = [
+          headers.join(","),
+          ...scrapedData.map((page) =>
+            [
+              `"${page.url}"`,
+              `"${page.title.replace(/"/g, '""')}"`,
+              `"${page.content.replace(/"/g, '""').substring(0, 32000)}"`, // Limit for Excel
+              page.content.split(" ").length,
+              `"${page.lastScraped}"`,
+            ].join(",")
+          ),
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        downloadFile(blob, "manitou-springs-content.csv");
+      }
+
+      function downloadText() {
+        if (!scrapedData) return;
+
+        // Create a zip-like structure (actually just concatenated text files)
+        let textContent = "";
+        scrapedData.forEach((page, index) => {
+          textContent += `=== FILE ${index + 1}: ${page.title} ===\n`;
+          textContent += `URL: ${page.url}\n`;
+          textContent += `Scraped: ${page.lastScraped}\n`;
+          textContent += `Content:\n${page.content}\n\n`;
+          textContent += "=".repeat(80) + "\n\n";
+        });
+
+        const blob = new Blob([textContent], { type: "text/plain" });
+        downloadFile(blob, "manitou-springs-content.txt");
+      }
+
+      function downloadFile(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    </script>
+  </body>
+</html>
