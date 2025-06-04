@@ -79,7 +79,7 @@ exports.handler = async (event, context) => {
                 !path.includes("youtube.com")
               );
             })
-            .slice(0, 15); // Get 15 more pages instead of 4
+            .slice(0, 8); // Get 8 more pages instead of 15
 
           urlsToScrape.push(...additionalUrls);
           debugInfo.push(
@@ -87,9 +87,9 @@ exports.handler = async (event, context) => {
           );
         }
 
-        // Wait between requests
+        // Wait between requests (longer delay)
         if (i < urlsToScrape.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Increased to 1 second
         }
       } catch (error) {
         debugInfo.push(`✗ Error scraping ${url}: ${error.message}`);
