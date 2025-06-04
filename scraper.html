@@ -89,13 +89,21 @@
       </p>
 
       <div class="scraper-section">
-        <h3>Step 1: Scrape Website</h3>
+        <h3>Step 1: Batch Scraping</h3>
         <p>
-          Click the button below to start scraping manitouspringsco.gov. This
-          may take a few minutes.
+          The website is too large to scrape all at once. Use batch processing
+          to get all pages:
         </p>
-        <button id="scrapeBtn" onclick="startScraping()">
-          🕷️ Start Scraping
+        <button id="scrapeBtn" onclick="startBatchScraping()">
+          🕷️ Start Batch 0
+        </button>
+        <button
+          id="nextBatchBtn"
+          onclick="scrapeNextBatch()"
+          disabled
+          style="margin-left: 10px"
+        >
+          📄 Get Next Batch
         </button>
         <div id="progress" class="progress" style="display: none"></div>
         <div id="results" class="results" style="display: none"></div>
@@ -103,9 +111,7 @@
 
       <div class="scraper-section">
         <h3>Step 2: Download Results</h3>
-        <p>
-          Once scraping is complete, download the data in your preferred format:
-        </p>
+        <p>Once all batches are complete, download the combined data:</p>
         <div class="download-section">
           <div class="file-format">
             <strong>JSON Format</strong><br />
@@ -145,21 +151,39 @@
     </div>
 
     <script>
-      let scrapedData = null;
+      let scrapedData = [];
+      let currentBatch = 0;
+      let totalBatches = 0;
 
-      async function startScraping() {
+      async function startBatchScraping() {
+        scrapedData = []; // Reset data
+        currentBatch = 0;
+        await scrapeBatch(0);
+      }
+
+      async function scrapeNextBatch() {
+        if (currentBatch < totalBatches - 1) {
+          currentBatch++;
+          await scrapeBatch(currentBatch);
+        }
+      }
+
+      async function scrapeBatch(batch) {
         const scrapeBtn = document.getElementById("scrapeBtn");
+        const nextBatchBtn = document.getElementById("nextBatchBtn");
         const progress = document.getElementById("progress");
         const results = document.getElementById("results");
 
         scrapeBtn.disabled = true;
-        scrapeBtn.textContent = "🔄 Scraping...";
+        nextBatchBtn.disabled = true;
+        scrapeBtn.textContent = `🔄 Scraping Batch ${batch}...`;
         progress.style.display = "block";
-        progress.textContent = "Starting to scrape manitouspringsco.gov...";
+        progress.textContent = `Scraping batch ${batch}...`;
 
         try {
-          // Replace with your actual Netlify function URL
-          const response = await fetch("/.netlify/functions/scrape-manitou");
+          const response = await fetch(
+            `/.netlify/functions/scrape-manitou?batch=${batch}`
+          );
 
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -168,40 +192,40 @@
           const data = await response.json();
 
           if (data.success) {
-            scrapedData = data.pages;
-            progress.textContent = `✅ Successfully scraped ${data.totalPages} pages!`;
+            // Add new pages to our collection
+            scrapedData.push(...data.pages);
+            totalBatches = data.totalBatches;
+
+            progress.textContent = `✅ Batch ${batch} complete! Got ${data.totalPagesThisBatch} pages. Total so far: ${scrapedData.length}`;
 
             results.style.display = "block";
-
-            // Show debug info
-            let resultsText = `Debug Information:\n`;
-            if (data.debugInfo) {
-              resultsText += data.debugInfo.slice(0, 10).join("\n") + "\n\n";
-            }
-
-            resultsText += `Found ${data.totalPages} pages with content:\n\n`;
-
-            if (data.totalPages > 0) {
-              resultsText += data.pages
+            results.textContent =
+              `Batch ${batch} Results:\n` +
+              `Pages in this batch: ${data.totalPagesThisBatch}\n` +
+              `Total pages collected: ${scrapedData.length}\n` +
+              `Total batches: ${data.totalBatches}\n` +
+              `Has more batches: ${data.hasMoreBatches}\n\n` +
+              `Latest pages:\n` +
+              data.pages
                 .slice(0, 2)
                 .map(
                   (page) =>
                     `📄 ${page.title}\n🔗 ${
                       page.url
-                    }\n📝 ${page.content.substring(0, 150)}...\n📊 ${
-                      page.wordCount
-                    } words\n`
+                    }\n📝 ${page.content.substring(0, 100)}...\n`
                 )
-                .join("\n");
+                .join("\n") +
+              "\n" +
+              data.debugInfo.slice(-5).join("\n");
+
+            // Enable appropriate buttons
+            if (data.hasMoreBatches) {
+              nextBatchBtn.disabled = false;
+              nextBatchBtn.textContent = `📄 Get Batch ${data.nextBatch}`;
+              progress.textContent += ` Click "Get Next Batch" to continue.`;
             } else {
-              resultsText +=
-                "No pages found. Check debug info above for details.";
-            }
-
-            results.textContent = resultsText;
-
-            // Enable download buttons only if we have data
-            if (data.totalPages > 0) {
+              progress.textContent += ` 🎉 All batches complete!`;
+              // Enable download buttons
               document.getElementById("downloadJson").disabled = false;
               document.getElementById("downloadCsv").disabled = false;
               document.getElementById("downloadTxt").disabled = false;
@@ -210,24 +234,24 @@
             throw new Error(data.error || "Unknown error occurred");
           }
         } catch (error) {
-          progress.textContent = `❌ Error: ${error.message}`;
+          progress.textContent = `❌ Error in batch ${batch}: ${error.message}`;
           console.error("Scraping error:", error);
         } finally {
           scrapeBtn.disabled = false;
-          scrapeBtn.textContent = "🕷️ Start Scraping";
+          scrapeBtn.textContent = "🕷️ Start Batch 0";
         }
       }
 
       function downloadJSON() {
-        if (!scrapedData) return;
+        if (scrapedData.length === 0) return;
 
         const dataStr = JSON.stringify(scrapedData, null, 2);
         const blob = new Blob([dataStr], { type: "application/json" });
-        downloadFile(blob, "manitou-springs-content.json");
+        downloadFile(blob, "manitou-springs-content-all-batches.json");
       }
 
       function downloadCSV() {
-        if (!scrapedData) return;
+        if (scrapedData.length === 0) return;
 
         const headers = [
           "URL",
@@ -235,6 +259,7 @@
           "Content",
           "Word Count",
           "Scraped Date",
+          "Batch",
         ];
         const csvContent = [
           headers.join(","),
@@ -242,32 +267,33 @@
             [
               `"${page.url}"`,
               `"${page.title.replace(/"/g, '""')}"`,
-              `"${page.content.replace(/"/g, '""').substring(0, 32000)}"`, // Limit for Excel
-              page.content.split(" ").length,
+              `"${page.content.replace(/"/g, '""').substring(0, 32000)}"`,
+              page.wordCount,
               `"${page.lastScraped}"`,
+              page.batch || 0,
             ].join(",")
           ),
         ].join("\n");
 
         const blob = new Blob([csvContent], { type: "text/csv" });
-        downloadFile(blob, "manitou-springs-content.csv");
+        downloadFile(blob, "manitou-springs-content-all-batches.csv");
       }
 
       function downloadText() {
-        if (!scrapedData) return;
+        if (scrapedData.length === 0) return;
 
-        // Create a zip-like structure (actually just concatenated text files)
         let textContent = "";
         scrapedData.forEach((page, index) => {
           textContent += `=== FILE ${index + 1}: ${page.title} ===\n`;
           textContent += `URL: ${page.url}\n`;
+          textContent += `Batch: ${page.batch || 0}\n`;
           textContent += `Scraped: ${page.lastScraped}\n`;
           textContent += `Content:\n${page.content}\n\n`;
           textContent += "=".repeat(80) + "\n\n";
         });
 
         const blob = new Blob([textContent], { type: "text/plain" });
-        downloadFile(blob, "manitou-springs-content.txt");
+        downloadFile(blob, "manitou-springs-content-all-batches.txt");
       }
 
       function downloadFile(blob, filename) {

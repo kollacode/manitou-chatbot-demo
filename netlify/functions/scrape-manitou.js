@@ -2,7 +2,6 @@
 const https = require("https");
 
 exports.handler = async (event, context) => {
-  // Shorter timeout for Netlify
   context.callbackWaitsForEmptyEventLoop = false;
 
   const headers = {
@@ -19,18 +18,97 @@ exports.handler = async (event, context) => {
     const debugInfo = [];
     const scrapedPages = [];
 
-    // Start with ONLY the sitemap to get the real URLs
-    const urlsToScrape = ["https://www.manitouspringsco.gov/sitemap"];
+    // Get batch parameter from query string (default to 0)
+    const batch = parseInt(event.queryStringParameters?.batch || "0");
 
-    debugInfo.push(`Starting with sitemap to discover actual URLs...`);
+    // First, always get the sitemap to extract URLs (ONLY for batch 0 or if we need URLs)
+    debugInfo.push(
+      `Starting batch ${batch} - getting sitemap to extract URLs...`
+    );
 
-    for (let i = 0; i < urlsToScrape.length; i++) {
-      const url = urlsToScrape[i];
+    const sitemapData = await scrapePage(
+      "https://www.manitouspringsco.gov/sitemap",
+      true
+    ); // true = extract links
+    debugInfo.push(
+      `Sitemap loaded with ${sitemapData.links.length} total links found`
+    );
+
+    // Add sitemap to results for batch 0 only
+    if (batch === 0) {
+      scrapedPages.push({
+        url: "https://www.manitouspringsco.gov/sitemap",
+        title: sitemapData.title,
+        content: sitemapData.content,
+        wordCount: sitemapData.wordCount,
+        lastScraped: new Date().toISOString(),
+        batch: 0,
+      });
+    }
+
+    // Filter and organize URLs by importance
+    const allUrls = sitemapData.links.filter((link) => {
+      const path = link.toLowerCase();
+      return (
+        !path.includes("/myaccount") &&
+        !path.includes("/login") &&
+        !path.includes("/register") &&
+        !path.includes("/search") &&
+        !path.includes("/sitemap") &&
+        !path.includes(".pdf") &&
+        !path.includes("facebook.com") &&
+        !path.includes("youtube.com")
+      );
+    });
+
+    // Organize URLs by priority (main sections first)
+    const priorityUrls = [];
+    const mainSections = [
+      "/I-Want-To",
+      "/Community",
+      "/Government",
+      "/Business",
+      "/Visitors",
+      "/News",
+    ];
+
+    // Add main section URLs first
+    mainSections.forEach((section) => {
+      const sectionUrls = allUrls.filter((url) => url.includes(section));
+      priorityUrls.push(...sectionUrls);
+    });
+
+    // Add remaining URLs
+    const remainingUrls = allUrls.filter((url) => !priorityUrls.includes(url));
+    priorityUrls.push(...remainingUrls);
+
+    debugInfo.push(`Organized ${priorityUrls.length} URLs by priority`);
+
+    // Define batch size - can be larger now since we're not following links
+    const batchSize = 8; // Increased from 4
+    const startIndex = batch * batchSize;
+    const endIndex = startIndex + batchSize;
+    const urlsForThisBatch = priorityUrls.slice(startIndex, endIndex);
+
+    debugInfo.push(
+      `Batch ${batch}: scraping URLs ${startIndex} to ${
+        endIndex - 1
+      } (depth 0 only)`
+    );
+    debugInfo.push(
+      `URLs for this batch: ${urlsForThisBatch.slice(0, 3).join(", ")}${
+        urlsForThisBatch.length > 3 ? "..." : ""
+      }`
+    );
+
+    // Scrape the URLs for this batch (NO LINK FOLLOWING)
+    for (let i = 0; i < urlsForThisBatch.length; i++) {
+      const url = urlsForThisBatch[i];
 
       try {
-        debugInfo.push(`Scraping page ${i + 1}: ${url}`);
+        debugInfo.push(`Scraping ${i + 1}/${urlsForThisBatch.length}: ${url}`);
 
-        const pageData = await scrapePage(url);
+        const pageData = await scrapePage(url, false); // false = don't extract links
 
         if (pageData.content && pageData.content.length > 50) {
           scrapedPages.push({
@@ -39,6 +117,7 @@ exports.handler = async (event, context) => {
             content: pageData.content,
             wordCount: pageData.wordCount,
             lastScraped: new Date().toISOString(),
+            batch: batch,
           });
           debugInfo.push(
             `✓ Added: ${pageData.title} (${pageData.wordCount} words)`
@@ -49,52 +128,18 @@ exports.handler = async (event, context) => {
           );
         }
 
-        // If this is the sitemap, grab MORE of its links for scraping
-        if (
-          url.includes("/sitemap") &&
-          pageData.links &&
-          pageData.links.length > 0
-        ) {
-          debugInfo.push(
-            `Found ${pageData.links.length} total links in sitemap`
-          );
-          debugInfo.push(
-            `First 10 links: ${pageData.links.slice(0, 10).join(", ")}`
-          );
-
-          // Add more links from sitemap - prioritize main section pages
-          const additionalUrls = pageData.links
-            .filter((link) => {
-              // Skip authentication and utility pages
-              const path = link.toLowerCase();
-              return (
-                !path.includes("/myaccount") &&
-                !path.includes("/login") &&
-                !path.includes("/register") &&
-                !path.includes("/search") &&
-                !path.includes("/sitemap") &&
-                !path.includes(".pdf") &&
-                !path.includes(".doc") &&
-                !path.includes("facebook.com") &&
-                !path.includes("youtube.com")
-              );
-            })
-            .slice(0, 8); // Get 8 more pages instead of 15
-
-          urlsToScrape.push(...additionalUrls);
-          debugInfo.push(
-            `Added ${additionalUrls.length} URLs from sitemap for scraping`
-          );
-        }
-
-        // Wait between requests (longer delay)
-        if (i < urlsToScrape.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000)); // Increased to 1 second
+        // Shorter wait since we're not following links
+        if (i < urlsForThisBatch.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
       } catch (error) {
         debugInfo.push(`✗ Error scraping ${url}: ${error.message}`);
       }
     }
+
+    // Calculate totals
+    const totalBatches = Math.ceil(priorityUrls.length / batchSize);
+    const hasMoreBatches = batch + 1 < totalBatches;
 
     return {
       statusCode: 200,
@@ -104,10 +149,17 @@ exports.handler = async (event, context) => {
       },
       body: JSON.stringify({
         success: true,
+        batch: batch,
+        totalBatches: totalBatches,
+        hasMoreBatches: hasMoreBatches,
+        nextBatch: hasMoreBatches ? batch + 1 : null,
         pages: scrapedPages,
-        totalPages: scrapedPages.length,
+        totalPagesThisBatch: scrapedPages.length,
+        totalUrlsAvailable: priorityUrls.length,
         debugInfo: debugInfo,
-        message: "This is a small batch. Run multiple times to get more pages.",
+        instructions: hasMoreBatches
+          ? `Run again with ?batch=${batch + 1} to get the next batch`
+          : "All batches complete!",
       }),
     };
   } catch (error) {
@@ -126,7 +178,7 @@ exports.handler = async (event, context) => {
   }
 };
 
-function scrapePage(url) {
+function scrapePage(url, extractLinks = false) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("Timeout after 5 seconds"));
@@ -153,7 +205,7 @@ function scrapePage(url) {
               ? response.headers.location
               : new URL(response.headers.location, url).href;
 
-            scrapePage(redirectUrl).then(resolve).catch(reject);
+            scrapePage(redirectUrl, extractLinks).then(resolve).catch(reject);
             return;
           }
 
@@ -169,7 +221,7 @@ function scrapePage(url) {
           response.on("end", () => {
             clearTimeout(timeout);
             try {
-              const parsed = parseHTML(data);
+              const parsed = parseHTML(data, extractLinks);
               resolve(parsed);
             } catch (error) {
               reject(error);
@@ -189,55 +241,16 @@ function scrapePage(url) {
   });
 }
 
-function parseHTML(html) {
+function parseHTML(html, extractLinks = false) {
   // Extract title
   const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
   const title = titleMatch
     ? titleMatch[1].trim().substring(0, 100)
     : "No Title";
 
-  // For sitemap pages, extract ALL links from the sitemap tree structure
+  // Extract links ONLY if requested (for sitemap processing)
   let links = [];
-  if (html.includes("Site Map") || html.includes("sitemap")) {
-    // Extract all links from the sitemap's tree structure
-    const sitemapMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
-    links = sitemapMatches
-      .map((link) => {
-        const hrefMatch = link.match(/href=['"]([^'"]*)['"]/i);
-        if (!hrefMatch) return null;
-
-        let href = hrefMatch[1];
-
-        // Skip non-content links
-        if (
-          href.startsWith("#") ||
-          href.startsWith("javascript:") ||
-          href.startsWith("mailto:") ||
-          href.startsWith("tel:") ||
-          href.includes("facebook.com") ||
-          href.includes("twitter.com") ||
-          href.includes("instagram.com") ||
-          href.includes("youtube.com") ||
-          href.includes("nextdoor.com") ||
-          href.includes(".pdf") ||
-          href.includes(".doc")
-        ) {
-          return null;
-        }
-
-        // Convert relative to absolute
-        if (href.startsWith("/")) {
-          href = "https://www.manitouspringsco.gov" + href;
-        }
-
-        return href;
-      })
-      .filter((link) => link && link.includes("manitouspringsco.gov"))
-      .filter((link, index, arr) => arr.indexOf(link) === index); // Remove duplicates
-
-    console.log(`Found ${links.length} links in sitemap`);
-  } else {
-    // For regular pages, use normal link extraction
+  if (extractLinks) {
     const linkMatches = html.match(/<a[^>]*href=['"]([^'"]*)['"]/gi) || [];
     links = linkMatches
       .map((link) => {
@@ -278,7 +291,7 @@ function parseHTML(html) {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim()
-    .substring(0, 3000); // Limit content
+    .substring(0, 3000);
 
   const wordCount = content.split(" ").filter((word) => word.length > 0).length;
 
