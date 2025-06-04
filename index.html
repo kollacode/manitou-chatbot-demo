@@ -178,9 +178,10 @@
         };
 
         suggestions.appendChild(
-          createSuggestionBtn("I am visiting Manitou Springs")
+          createSuggestionBtn("How do I sign up for emergency notifications?")
         );
-        suggestions.appendChild(createSuggestionBtn("Where should I park?"));
+        suggestions.appendChild(createSuggestionBtn("How do I apply for a business license?"));
+        suggestions.appendChild(createSuggestionBtn("Where can residents get parking permits?"));
 
         greeting.appendChild(avatarIcon);
         const textContainer = document.createElement("div");
@@ -344,7 +345,9 @@
                 },
                 body: JSON.stringify({
                   model: "llama3.2:1b",
-                  messages: [{ role: "user", content: userInput }],
+                  // messages: [{ role: "user", content: userInput }],
+                  // model:  'xai/grok-3', // 'llama3.2:1b', // 'chatgpt-4o-latest', //
+                  messages: [{ role: 'user', content: userInput },{role: 'system', "content": "Use knowledge base ID: '6bf40511-6ef2-4de7-a39f-4f0c42fd259e' for retrieval if needed."},],
                   files: [
                     {
                       type: "collection",
