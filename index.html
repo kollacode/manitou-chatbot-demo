@@ -344,9 +344,9 @@
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  model: "llama3.2:1b",
+                  //model: "llama3.2:1b",
                   // messages: [{ role: "user", content: userInput }],
-                  // model:  'xai/grok-3', // 'llama3.2:1b', // 'chatgpt-4o-latest', //
+                  model:  'xai/grok-3', // 'llama3.2:1b', // 'chatgpt-4o-latest', //
                   messages: [{ role: 'user', content: userInput },{role: 'system', "content": "Use knowledge base ID: '6bf40511-6ef2-4de7-a39f-4f0c42fd259e' for retrieval if needed."},],
                   files: [
                     {
