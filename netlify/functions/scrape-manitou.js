@@ -66,10 +66,12 @@ async function scrapeWebsite(baseUrl) {
         `Page data for ${currentUrl}: title="${pageData.title}", content length=${pageData.content.length}, links found=${pageData.links.length}`
       );
 
-      // Lower threshold and always include the main page
+      // Lower threshold and always include the main page or pages with substantial content
       if (
         pageData.content &&
-        (pageData.content.length > 50 || currentUrl === baseUrl)
+        (pageData.content.length > 50 ||
+          currentUrl === baseUrl ||
+          pageData.content.length > 200)
       ) {
         scrapedPages.push({
           url: currentUrl,
@@ -86,9 +88,20 @@ async function scrapeWebsite(baseUrl) {
         );
       }
 
-      // Find more URLs to visit (only within the same domain)
+      // Find more URLs to visit - be more flexible with domain matching
       const newUrls = pageData.links
-        .filter((link) => link.startsWith(baseUrl))
+        .filter((link) => {
+          // Accept both manitouspringsco.gov and any redirected domain
+          return (
+            link.includes("manitou") ||
+            link.includes("springs") ||
+            link.startsWith(baseUrl) ||
+            (pageData.finalUrl &&
+              link.startsWith(
+                pageData.finalUrl.split("/").slice(0, 3).join("/")
+              ))
+          );
+        })
         .filter((link) => !visitedUrls.has(link))
         .slice(0, 3); // Reduced for debugging
 
@@ -116,38 +129,77 @@ async function scrapeWebsite(baseUrl) {
 
 function scrapePage(url) {
   return new Promise((resolve, reject) => {
-    const request = https.get(
-      url,
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; ManitouBot/1.0; +https://your-site.netlify.app)",
-        },
-        timeout: 10000,
-      },
-      (response) => {
-        let data = "";
-
-        response.on("data", (chunk) => {
-          data += chunk;
-        });
-
-        response.on("end", () => {
-          try {
-            const parsed = parseHTML(data, url);
-            resolve(parsed);
-          } catch (error) {
-            reject(error);
-          }
-        });
+    const followRedirect = (currentUrl, redirectCount = 0) => {
+      if (redirectCount > 5) {
+        reject(new Error("Too many redirects"));
+        return;
       }
-    );
 
-    request.on("error", reject);
-    request.on("timeout", () => {
-      request.destroy();
-      reject(new Error("Request timeout"));
-    });
+      const request = https.get(
+        currentUrl,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (compatible; ManitouBot/1.0; +https://your-site.netlify.app)",
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "identity",
+            Connection: "keep-alive",
+          },
+          timeout: 15000,
+        },
+        (response) => {
+          // Handle redirects
+          if (
+            response.statusCode >= 300 &&
+            response.statusCode < 400 &&
+            response.headers.location
+          ) {
+            const redirectUrl = response.headers.location.startsWith("http")
+              ? response.headers.location
+              : new URL(response.headers.location, currentUrl).href;
+
+            console.log(`Redirecting from ${currentUrl} to ${redirectUrl}`);
+            followRedirect(redirectUrl, redirectCount + 1);
+            return;
+          }
+
+          // Handle non-success status codes
+          if (response.statusCode !== 200) {
+            reject(
+              new Error(
+                `HTTP ${response.statusCode}: ${response.statusMessage}`
+              )
+            );
+            return;
+          }
+
+          let data = "";
+
+          response.on("data", (chunk) => {
+            data += chunk;
+          });
+
+          response.on("end", () => {
+            try {
+              const parsed = parseHTML(data, currentUrl);
+              resolve(parsed);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }
+      );
+
+      request.on("error", reject);
+      request.on("timeout", () => {
+        request.destroy();
+        reject(new Error("Request timeout"));
+      });
+    };
+
+    followRedirect(url);
   });
 }
 
