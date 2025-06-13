@@ -286,95 +286,103 @@
           messages.scrollTop = messages.scrollHeight;
         }
 
-        // Handle form submit
-        form.onsubmit = async (e) => {
-          e.preventDefault();
-          const userInput = input.value.trim();
-          if (!userInput) return;
+// Global message history to persist context across user messages
+const messageHistory = [
+  {
+    role: "system",
+    content:
+      "You are a helpful municipal assistant in the City of Manitou Springs, Colorado. Based on the provided context you are providing answers to chat queries sent to you by constituents, citizens, and visitors. If the exact answer isn't available, provide the closest relevant information from the context."
+  }
+];
 
-          addMessage(userInput, true);
-          input.value = "";
+// Handle form submit
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const userInput = input.value.trim();
+  if (!userInput) return;
 
-          // Add typing indicator
-          const typingContainer = document.createElement("div");
-          typingContainer.style = `
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 16px;
-            gap: 8px;
-          `;
+  addMessage(userInput, true);
+  input.value = "";
 
-          const typingAvatar = document.createElement("div");
-          typingAvatar.style = `
-            width: 28px;
-            height: 28px;
-            background: #8B4B7C;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            flex-shrink: 0;
-          `;
-          typingAvatar.textContent = "🦫";
+  // Add user message to history
+  messageHistory.push({
+    role: "user",
+    content: userInput
+  });
 
-          const typingIndicator = document.createElement("div");
-          typingIndicator.style = `
-            padding: 12px 16px;
-            border-radius: 18px;
-            background: white;
-            border: 1px solid #e0e0e0;
-            color: #666;
-            font-style: italic;
-          `;
-          typingIndicator.textContent = "Manny is typing...";
+  // Add typing indicator
+  const typingContainer = document.createElement("div");
+  typingContainer.style = `
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    gap: 8px;
+  `;
+  const typingAvatar = document.createElement("div");
+  typingAvatar.style = `
+    width: 28px;
+    height: 28px;
+    background: #8B4B7C;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  `;
+  typingAvatar.textContent = "🦫";
+  const typingIndicator = document.createElement("div");
+  typingIndicator.style = `
+    padding: 12px 16px;
+    border-radius: 18px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    color: #666;
+    font-style: italic;
+  `;
+  typingIndicator.textContent = "Manny is typing...";
+  typingContainer.appendChild(typingAvatar);
+  typingContainer.appendChild(typingIndicator);
+  messages.appendChild(typingContainer);
+  messages.scrollTop = messages.scrollHeight;
 
-          typingContainer.appendChild(typingAvatar);
-          typingContainer.appendChild(typingIndicator);
-          messages.appendChild(typingContainer);
-          messages.scrollTop = messages.scrollHeight;
-
-          try {
-            const response = await fetch(
-              "https://openwebui.kollacodeai.com/api/chat/completions",
-              {
-                method: "POST",
-                headers: {
-                  Authorization: "Bearer sk-5aeb668925f3457fb71432e9bb2ee0ae",
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  //model: "llama3.2:1b",
-                  // messages: [{ role: "user", content: userInput }],
-                  model:  'xai/grok-3', // 'llama3.2:1b', // 'chatgpt-4o-latest', //
-                  messages: [{ role: 'user' , content: userInput },
-                             {role: 'system', content: "You are a helpful municipal assistant in the City of manitou Springs, Colorado. Based on the provided context you are providing answers to chat queries sent to you by constituent, citizens and visitors. If the exact answer isn't available, provide the closest relevant information from the context. "}
-                             ],
-                             // Use knowledge base ID: '6bf40511-6ef2-4de7-a39f-4f0c42fd259e' for retrieval if needed.
-
-                             // Optional: Inject a collection ID from OpenWebUI
-                  knowledge_base_id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e",
-                  files: [
-                    {
-                      type: "collection",
-                      id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e",
-                    },
-                  ],
-                }),
-              }
-            );
-            const data = await response.json();
-            const reply =
-              data?.choices?.[0]?.message?.content || "No response.";
-
-            // Remove typing indicator
-            messages.removeChild(typingContainer);
-            addMessage(reply, false);
-          } catch (err) {
-            messages.removeChild(typingContainer);
-            addMessage("Error: " + err.message, false);
+  try {
+    const response = await fetch("https://openwebui.kollacodeai.com/api/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer sk-5aeb668925f3457fb71432e9bb2ee0ae",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "xai/grok-3",
+        messages: messageHistory,
+        knowledge_base_id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e",
+        files: [
+          {
+            type: "collection",
+            id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e"
           }
-        };
+        ]
+      })
+    });
+
+    const data = await response.json();
+    const reply = data?.choices?.[0]?.message?.content || "No response.";
+
+    // Add assistant reply to history
+    messageHistory.push({
+      role: "assistant",
+      content: reply
+    });
+
+    messages.removeChild(typingContainer);
+    addMessage(reply, false);
+  } catch (err) {
+    messages.removeChild(typingContainer);
+    addMessage("Error: " + err.message, false);
+  }
+};
+
 
         // Add powered by footer
         const footer = document.createElement("div");
