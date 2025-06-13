@@ -22,6 +22,16 @@
     />
     <script>
       (function () {
+
+          // LLM Handling
+          // Start with message history:
+          const messageHistory = [            
+            {
+              role: "system", 
+              content: "You are a helpful municipal assistant in the City of manitou Springs, Colorado. Based on the provided context you are providing answers to chat queries sent to you by constituent, citizens and visitors. If the exact answer isn't available, provide the closest relevant information from the context. "
+            }
+          ];
+
         // Create the chat UI
         const container = document.createElement("div");
         container.style = `
@@ -334,14 +344,7 @@
           messages.appendChild(typingContainer);
           messages.scrollTop = messages.scrollHeight;
 
-         // LLM Handling
-          // Start with message history:
-          const messageHistory = [            
-            {
-              role: "system", 
-              content: "You are a helpful municipal assistant in the City of manitou Springs, Colorado. Based on the provided context you are providing answers to chat queries sent to you by constituent, citizens and visitors. If the exact answer isn't available, provide the closest relevant information from the context. "
-            }
-          ];
+
 
           // New user follow-up:
           messageHistory.push({
