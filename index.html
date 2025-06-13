@@ -344,8 +344,6 @@
           messages.appendChild(typingContainer);
           messages.scrollTop = messages.scrollHeight;
 
-
-
           // New user follow-up:
           messageHistory.push({
             role: "user",
@@ -363,7 +361,7 @@
                 },
                 body: JSON.stringify({
                   // messages: [{ role: "user", content: userInput }],
-                  model:  'o4-mini', // 'llama3.2:1b', // 'chatgpt-4o-latest', // 'xai/grok-3'
+                  model:  'chatgpt-4o-latest', //'o4-mini', // 'llama3.2:1b', // 'chatgpt-4o-latest', // 'xai/grok-3'
                   messages: messageHistory,                             
                   // Optional: Inject a collection ID from OpenWebUI
                   knowledge_base_id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e",
