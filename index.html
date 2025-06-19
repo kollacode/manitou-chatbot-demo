@@ -354,7 +354,7 @@ form.onsubmit = async (e) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "o4-mini", // xai/grok-3  // o4-mini   // xai/grok-3-fast-latest // "gemini/gemini-1.5-pro"
+        model: "xai/grok-3-fast-latest", // xai/grok-3  // o4-mini   // xai/grok-3-fast-latest // "gemini/gemini-1.5-pro"
         messages: messageHistory,
         knowledge_base_id: "6bf40511-6ef2-4de7-a39f-4f0c42fd259e",
         files: [
